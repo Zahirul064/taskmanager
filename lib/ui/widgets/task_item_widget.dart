@@ -60,7 +60,10 @@ class _TaskItemWidgetState extends State<TaskItemWidget> {
                       onPressed: () {
                         _deleteTask(widget.taskModel.sId?? '');
                       },
-                      icon: Icon(Icons.delete),
+                      icon: Icon(
+                        Icons.delete,
+                        color: Colors.red,
+                      ),
                     ),
                     IconButton(
                       onPressed: () => _showUpdateDialog(context),
