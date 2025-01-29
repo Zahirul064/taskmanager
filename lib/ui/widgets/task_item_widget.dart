@@ -1,174 +1,131 @@
 import 'package:flutter/material.dart';
+import 'package:task_manager/app.dart';
 import 'package:task_manager/data/models/task_model.dart';
-import 'package:task_manager/ui/widgets/centered_circular_progress_indicator.dart';
+import 'package:task_manager/ui/utils/status_enum.dart';
+import 'package:task_manager/ui/widgets/change_task_status_dialog.dart';
 import 'package:task_manager/ui/widgets/snack_bar_message.dart';
 
 import '../../data/services/network_caller.dart';
 import '../../data/utils/urls.dart';
+import 'delete_confirmation_dialog.dart';
+import '../screens/main_bottom_nav_screen.dart';
 
-class TaskItemWidget extends StatefulWidget {
+class TaskItemWidget extends StatelessWidget {
   const TaskItemWidget({
-    super.key, required this.taskModel, required this.color, required this.status,
+    super.key,
+    required this.taskModel,
   });
 
   final TaskModel taskModel;
-  final Color color;
-  final String status;
-
-  @override
-  _TaskItemWidgetState createState() => _TaskItemWidgetState();
-}
-
-class _TaskItemWidgetState extends State<TaskItemWidget> {
-
-
-  final TextEditingController _updateStatusTEController = TextEditingController();
-  final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
-
-  bool _updateTaskStatusInProgress = false;
-  bool _deleteTaskInProgress = false;
-
-
 
   @override
   Widget build(BuildContext context) {
     return Card(
       color: Colors.white,
-      elevation: 0,
+      elevation: 3,
       child: ListTile(
-        tileColor: Colors.white,
-        title: Text(widget.taskModel.title ?? ''),
+        title: Text(taskModel.title ?? ''),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(widget.taskModel.description ?? ''),
-            Text('Date: ${widget.taskModel.createdDate ?? ''}'),
+            Text(taskModel.description ?? ''),
+            Text('Date: ${taskModel.createdDate ?? ''}'),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Container(
-                  padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(16),
-                    color: widget.color,
+                    color: _getStatusColor(
+                        taskModel.status ?? enumTaskStatus.NewTask.name),
                   ),
-                  child: Text(widget.status, style: const TextStyle(color: Colors.white)),
+                  child: Text(
+                    taskModel.status ?? enumTaskStatus.NewTask.name,
+                    style: const TextStyle(
+                      color: Colors.white,
+                    ),
+                  ),
                 ),
                 Row(
                   children: [
                     IconButton(
-                      onPressed: () {
-                        _deleteTask(widget.taskModel.sId?? '');
+                      onPressed: () async {
+                        bool isConfirmed = await ConfirmationDialog
+                            .showDeleteConfirmationDialog(context);
+                        if (isConfirmed) {
+                          _deleteTask(taskModel.sId!);
+                          Navigator.pushReplacementNamed(
+                              context, MainBottomNavScreen.name);
+                        }
                       },
-                      icon: Icon(
-                        Icons.delete,
-                        color: Colors.red,
-                      ),
+                      icon: const Icon(Icons.delete),
                     ),
                     IconButton(
-                      onPressed: () => _showUpdateDialog(context),
-                      icon: Icon(Icons.edit),
+                      onPressed: () async {
+                        enumTaskStatus taskStatus =
+                            await ChangeStatusDialog.showChangeStatusDialog(
+                                context);
+                        if (taskStatus.name != taskModel.status) {
+                          _updateTask(taskStatus.name, taskModel.sId!);
+                          Navigator.pushReplacementNamed(
+                              context, MainBottomNavScreen.name);
+                        }
+                      },
+                      icon: const Icon(Icons.edit),
                     ),
                   ],
-                ),
+                )
               ],
-            ),
+            )
           ],
         ),
       ),
     );
   }
 
-  void _showUpdateDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: Text('Update Status'),
-          content: Form(
-            key: _formKey,
-            child: TextFormField(
-              controller: _updateStatusTEController,
-              decoration: InputDecoration(
-                labelText: 'Enter new status',
-                border: OutlineInputBorder(),
-              ),
-              validator: (String? value) {
-                if (value?.trim().isEmpty ?? true) {
-                  return 'Enter task status';
-                }
-                return null;
-              },
-            ),
-          ),
-          actions: [
-            Column(
-              children: [
-                Visibility(
-                  visible: _updateTaskStatusInProgress==false,
-                  replacement: CenteredCircularProgressIndicator(),
-                  child: ElevatedButton(
-                    onPressed: _onTapUpdateStatusButton,
-                    child: Text('Submit'),
-                  ),
-                ),
-                SizedBox(height: 8),
-                ElevatedButton(
-                  onPressed: () {
-                    Navigator.of(context).pop();
-                  },
-                  child: Text('Cancel'),
-                ),
-              ],
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  void _onTapUpdateStatusButton() {
-    if (_formKey.currentState!.validate()) {
-      _getUpdateTaskStatus();
-    }
-  }
-
-
-  Future<void> _getUpdateTaskStatus() async {
-    _updateTaskStatusInProgress = true;
-    setState(() {});
-
-    final NetworkResponse response = await NetworkCaller.getRequest(
-      url: Urls.updateTaskListStatusUrl(widget.taskModel.sId ?? '', _updateStatusTEController.text),
-    );
-
-    if (response.isSuccess) {
-      Navigator.of(context).pop();
-      showSnackBarMessage(context, 'Status Updated');
+  Color _getStatusColor(String status) {
+    if (status == enumTaskStatus.NewTask.name) {
+      return Colors.blue;
+    } else if (status == enumTaskStatus.Progress.name) {
+      return Colors.purple;
+    } else if (status == enumTaskStatus.Canceled.name) {
+      return Colors.red;
     } else {
-      showSnackBarMessage(context, response.errorMessage);
+      return Colors.green;
     }
-    _updateTaskStatusInProgress = false;
-    setState(() {});
   }
 
-  Future<void> _deleteTask(String id) async {
-    _deleteTaskInProgress=true;
-    setState(() {});
-    final NetworkResponse response= await NetworkCaller.getRequest(url: Urls.deleteTaskUrl(id));
-    if(response.isSuccess){
-      showSnackBarMessage(context, 'Task deleted');
+  Future<void> _deleteTask(String sid) async {
+    // _getTaskCountByStatusInProgress = true;
+    // setState(() {});
+    final NetworkResponse response =
+        await NetworkCaller.getRequest(url: Urls.deleteTaskUrl(sid));
+    if (response.isSuccess) {
+      showSnackBarMessage(TaskManagerApp.navigatorKey.currentContext!,
+          "Task deleted successfully.");
+    } else {
+      showSnackBarMessage(
+          TaskManagerApp.navigatorKey.currentContext!, response.errorMessage);
     }
-    else{
-      showSnackBarMessage(context, response.errorMessage);
-    }
-    _deleteTaskInProgress=false;
-    setState(() {});
+    // _getTaskCountByStatusInProgress = false;
+    // setState(() {});
   }
 
-  @override
-  void dispose(){
-    _updateStatusTEController.clear();
-    super.dispose();
+  Future<void> _updateTask(String status, String sid) async {
+    // _getTaskCountByStatusInProgress = true;
+    // setState(() {});
+    final NetworkResponse response = await NetworkCaller.getRequest(
+        url: Urls.updateTaskStatusUrl(sid, status));
+    if (response.isSuccess) {
+      showSnackBarMessage(TaskManagerApp.navigatorKey.currentContext!,
+          "Task status updated successfully.");
+    } else {
+      showSnackBarMessage(
+          TaskManagerApp.navigatorKey.currentContext!, response.errorMessage);
+    }
+    // _getTaskCountByStatusInProgress = false;
+    // setState(() {});
   }
 }
